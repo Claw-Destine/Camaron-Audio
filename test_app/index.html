@@ -4,11 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Camaron Audio — test harness</title>
+  <link rel="icon" href="camaron-audio.png" />
   <style>
     :root { --bg:#0f1115; --panel:#171a21; --line:#2a2f3a; --fg:#e6e9ef; --mute:#9aa3b2; --acc:#5b8cff; }
     * { box-sizing: border-box; }
     body { margin:0; font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
-    header { padding:18px 22px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:12px; }
+    header { padding:18px 22px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; }
     header h1 { font-size:18px; margin:0; }
     header .sub { color:var(--mute); font-size:13px; }
     main { max-width:820px; margin:0 auto; padding:18px 16px 60px; }
@@ -18,6 +19,7 @@
     .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:14px; }
     label { display:block; font-size:12px; color:var(--mute); margin:10px 0 4px; }
     input,select,textarea { width:100%; padding:9px 11px; border-radius:9px; border:1px solid var(--line); background:#0d0f13; color:var(--fg); font:inherit; }
+    select { cursor:pointer; }
     button { padding:10px 16px; border-radius:10px; border:1px solid var(--line); background:#222836; color:var(--fg); cursor:pointer; font:inherit; }
     button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
     button.rec { background:#c0392b; border-color:#c0392b; color:#fff; }
@@ -34,10 +36,16 @@
     .msg .play { font-size:12px; margin-left:8px; opacity:.8; cursor:pointer; }
     .hidden { display:none; }
     .foot { color:var(--mute); font-size:12px; text-align:center; margin-top:24px; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600; letter-spacing:.03em; margin-left:6px; vertical-align:middle; }
+    .badge.asr { background:#1e3a5f; color:#6ab0ff; }
+    .badge.tts { background:#3a2a1e; color:#ffb86c; }
+    .model-row { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; gap:8px; }
+    .model-row:last-child { border-bottom:none; }
   </style>
 </head>
 <body>
 <header>
+  <img src="camaron-audio.png" alt="Camaron" width="36" height="36" style="border-radius:8px" />
   <h1>Camaron Audio</h1>
   <span class="sub">in-browser test harness (STT ⇄ TTS)</span>
 </header>
@@ -45,15 +53,17 @@
   <div class="tabs">
     <div class="tab active" data-tab="echo">Echo</div>
     <div class="tab" data-tab="conversation">Conversation</div>
+    <div class="tab" data-tab="manage">Manage</div>
   </div>
 
   <div class="card">
     <div class="grid2">
       <div><label>Audio service base URL</label><input id="audioBase" value="http://localhost:8080/v1"></div>
       <div><label>Audio API key (optional)</label><input id="audioKey" type="password" placeholder="empty for no auth" /></div>
-      <div><label>ASR model</label><input id="asrModel" value="whisper-tiny.en"></div>
-      <div><label>TTS model</label><input id="ttsModel" value="kokoro-82m-v1.0"></div>
+      <div><label>ASR model</label><select id="asrModel"><option value="">— refresh models —</option></select></div>
+      <div><label>TTS model</label><select id="ttsModel"><option value="">— refresh models —</option></select></div>
       <div><label>TTS voice</label><input id="ttsVoice" value="af_heart"></div>
+      <div><label>&nbsp;</label><button id="refreshModels" class="primary" style="width:100%">↻ Refresh models</button></div>
     </div>
     <details style="margin-top:14px">
       <summary style="cursor:pointer;color:var(--mute);font-size:13px">LLM settings (Conversation mode — your own OpenAI-compatible LLM)</summary>
@@ -91,16 +101,41 @@
     </div>
   </section>
 
+  <!-- MANAGE TAB -->
+  <section id="tab-manage" class="panel hidden">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:6px">
+        <h3 style="margin:0">Available models</h3>
+        <select id="manageFilter" style="width:auto">
+          <option value="">All</option>
+          <option value="asr">ASR</option>
+          <option value="tts">TTS</option>
+        </select>
+      </div>
+      <div id="manageList"></div>
+      <div class="status" id="manageStatus"></div>
+    </div>
+  </section>
+
   <div class="foot">Audio flows through the Camaron service (STT/TTS). Conversation replies come from your own LLM, then are spoken via the service's TTS.</div>
 </main>
 
 <script>
 "use strict";
 const $ = (s) => document.querySelector(s);
-const val = (id) => document.getElementById(id).value.trim();
+const val = (id) => {
+  const el = document.getElementById(id);
+  return el ? el.value.trim() : "";
+};
 
 function audioHeaders() {
   const h = { "Content-Type": "application/json" };
+  if (val("audioKey")) h["Authorization"] = "Bearer " + val("audioKey");
+  return h;
+}
+function manageBase() { return val("audioBase").replace(/\/v1\/?$/, ""); }
+function manageHeaders() {
+  const h = {};
   if (val("audioKey")) h["Authorization"] = "Bearer " + val("audioKey");
   return h;
 }
@@ -198,11 +233,12 @@ document.querySelectorAll(".tab").forEach((t) =>
     document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
     t.classList.add("active");
     document.querySelectorAll(".panel").forEach((p) => p.classList.add("hidden"));
-    $("#tab-" + t.dataset.tab).classList.remove("hidden");
+    const panel = $("#tab-" + t.dataset.tab);
+    if (panel) panel.classList.remove("hidden");
   })
 );
 
-const setStatus = (el, msg, isError) => { el.textContent = msg || ""; el.classList.toggle("error", !!isError); };
+const setStatus = (el, msg, isError) => { if (el) { el.textContent = msg || ""; el.classList.toggle("error", !!isError); } };
 
 // ---- echo tab -------------------------------------------------------------
 let echoBlob = null;
@@ -243,13 +279,13 @@ const chatbox = $("#chatbox");
 const history = [];
 function renderMsg(role, content) {
   const div = document.createElement("div"); div.className = "msg " + role;
-  div.textContent = content; (div.className.includes("user") ? 0 : 0);
+  div.textContent = content;
   chatbox.appendChild(div); chatbox.scrollTop = chatbox.scrollHeight;
   return div;
 }
 function assistantMsg(content) {
   const div = renderMsg("assistant", content);
-  const p = document.createElement("span"); p.className = "play"; p.textContent = "🔊 play";
+  const p = document.createElement("span"); p.className = "play"; p.textContent = " 🔊 play";
   p.onclick = async () => { try { setStatus($("#chatStatus"), "Speaking…"); await playWav(await synthesize(content)); setStatus($("#chatStatus"), ""); } catch (e) { setStatus($("#chatStatus"), e.message, true); } };
   div.appendChild(p);
   return div;
@@ -260,7 +296,11 @@ async function llmReply(messages) {
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + (val("llmKey") || "") },
     body: JSON.stringify({ model: val("llmModel") || "gpt-4o-mini", messages, max_tokens: 300 }),
   });
-  if (!r.ok) { let m; try { m = (await r.json()).error && (await r.json()).error.message; } catch { m = r.statusText; } throw new Error("LLM HTTP " + r.status + (m ? ": " + m : "")); }
+  if (!r.ok) {
+    let m;
+    try { const j = await r.json(); m = j.error && j.error.message; } catch { m = r.statusText; }
+    throw new Error("LLM HTTP " + r.status + (m ? ": " + m : ""));
+  }
   const j = await r.json();
   return j.choices[0].message.content;
 }
@@ -301,6 +341,113 @@ async function sendChat() {
 }
 $("#chatSend").addEventListener("click", sendChat);
 $("#chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+
+// ---- manage tab -----------------------------------------------------------
+async function refreshModelSelects() {
+  const btn = $("#refreshModels");
+  btn.disabled = true;
+  try {
+    const [asr, tts] = await Promise.all([
+      fetch(manageBase() + "/manage/models?type=asr", { headers: manageHeaders() }),
+      fetch(manageBase() + "/manage/models?type=tts", { headers: manageHeaders() }),
+    ]);
+    const asrModels = asr.ok ? await asr.json() : [];
+    const ttsModels = tts.ok ? await tts.json() : [];
+
+    function populate(id, models, fallback) {
+      const sel = document.getElementById(id);
+      const current = sel.value;
+      sel.innerHTML = "";
+      if (!models.length) {
+        const o = document.createElement("option");
+        o.value = ""; o.textContent = `— no ${fallback} models installed —`;
+        sel.appendChild(o);
+        return;
+      }
+      models.forEach(m => {
+        const o = document.createElement("option");
+        o.value = m.name;
+        o.textContent = m.name + (m.languages && m.languages.length ? ` (${m.languages.join(", ")})` : "");
+        sel.appendChild(o);
+      });
+      if (current && models.some(m => m.name === current)) sel.value = current;
+    }
+    populate("asrModel", asrModels, "ASR");
+    populate("ttsModel", ttsModels, "TTS");
+    setStatus($("#manageStatus"), `Loaded ${asrModels.length} ASR + ${ttsModels.length} TTS model(s).`);
+  } catch (e) {
+    setStatus($("#manageStatus"), e.message, true);
+  } finally { btn.disabled = false; }
+}
+
+async function loadManageList() {
+  const list = $("#manageList");
+  const filter = val("manageFilter");
+  const q = filter ? `?type=${filter}` : "";
+  try {
+    const r = await fetch(manageBase() + "/manage/hf/models" + q, { headers: manageHeaders() });
+    if (!r.ok) {
+      let msg;
+      try { const j = await r.json(); msg = j.detail || JSON.stringify(j); } catch { msg = r.statusText; }
+      throw new Error(msg);
+    }
+    const models = await r.json();
+    list.innerHTML = "";
+    if (!models.length) {
+      list.innerHTML = `<p style="color:var(--mute);padding:12px 0">No models found.</p>`;
+      return;
+    }
+    models.forEach(m => {
+      const div = document.createElement("div");
+      div.className = "model-row";
+      const left = document.createElement("div");
+      left.innerHTML = `<strong>${m.name}</strong><span class="badge ${m.task}">${m.task.toUpperCase()}</span>&nbsp; ${m.description || ""}`;
+      const btn = document.createElement("button");
+      if (m.status === "installed") {
+        btn.textContent = "✓ Installed";
+        btn.disabled = true;
+      } else {
+        btn.textContent = "⬇ Download";
+        btn.classList.add("primary");
+        btn.onclick = () => fetchModel(m.name, btn);
+      }
+      div.appendChild(left);
+      div.appendChild(btn);
+      list.appendChild(div);
+    });
+  } catch (e) {
+    setStatus($("#manageStatus"), e.message, true);
+    list.innerHTML = "";
+  }
+}
+
+async function fetchModel(name, btn) {
+  btn.disabled = true;
+  btn.textContent = "Downloading…";
+  setStatus($("#manageStatus"), `Downloading ${name}… this may take a moment.`);
+  try {
+    const r = await fetch(manageBase() + `/manage/hf/fetch/${name}`, { method: "POST", headers: manageHeaders() });
+    if (!r.ok) {
+      let msg;
+      try { const j = await r.json(); msg = j.detail || JSON.stringify(j); } catch { msg = r.statusText; }
+      throw new Error(msg);
+    }
+    setStatus($("#manageStatus"), `${name} is ready!`);
+    btn.textContent = "✓ Installed";
+    await refreshModelSelects();
+    loadManageList();
+  } catch (e) {
+    setStatus($("#manageStatus"), `Failed: ${e.message}`, true);
+    btn.disabled = false;
+    btn.textContent = "⬇ Download";
+  }
+}
+
+$("#refreshModels").addEventListener("click", () => { loadManageList(); refreshModelSelects(); });
+$("#manageFilter").addEventListener("change", loadManageList);
+
+// Auto-load on page load if service is reachable
+window.addEventListener("load", () => { loadManageList(); refreshModelSelects(); });
 </script>
 </body>
 </html>

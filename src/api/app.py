@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .. import __version__
 from ..config import Config
 from ..inference.engine import Registry
+from . import manage as _manage
 from . import models as _models
 from . import speech as _speech
 from . import transcriptions as _transcriptions
@@ -55,6 +56,7 @@ def create_app(config: Config, registry: Registry) -> FastAPI:
     app.include_router(_speech.router)
     app.include_router(_transcriptions.router)
     app.include_router(_translations.router)
+    app.include_router(_manage.router)
 
     register_exception_handlers(app)
     return app

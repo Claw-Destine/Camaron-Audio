@@ -1,0 +1,158 @@
+# hf_registry.yaml — Curated, known-working Hugging Face models for camaron-audio.
+#
+# Every entry in this list has been verified to produce a compatible ONNX
+# Runtime model that the service's inference pipeline can load.  The API
+# surface uses this file as the single source of truth for what the user can
+# download and which files to pull from HF.
+#
+# Structure
+#   Each top-level list item is a model manifest with *extra* download fields:
+#     name            – model id (also becomes the local folder name)
+#     task            – "asr" | "tts"
+#     hf_repo         – Hugging Face repo id (org/name)
+#     description     – human-readable summary shown in the UI
+#     download_files  – file paths to fetch from hf_repo
+#     voice_repo      – (TTS) repo holding voice style tables (.pt → .npy)
+#     voices          – (TTS) voice table ids to download
+#     ... plus the standard manifest fields (languages, params, etc.)
+#
+# To add a new model:
+#   1. Verify the repo exists and the files in download_files are present.
+#   2. Add an entry below with the correct manifest fields.
+#   3. (Optional) Run: python -m src.__main__ --model-path models --port 8080
+#      then: curl -X POST http://localhost:8080/manage/hf/fetch/<name>
+
+- name: whisper-tiny.en
+  task: asr
+  hf_repo: onnx-community/whisper-tiny.en
+  description: "Whisper Tiny English — 39 M params, fastest inference"
+  languages:
+    - en
+  download_files:
+    - onnx/encoder_model.onnx
+    - onnx/decoder_model.onnx
+    - tokenizer.json
+    - preprocessor_config.json
+    - config.json
+    - added_tokens.json
+    - special_tokens_map.json
+  onnx_files:
+    - onnx/encoder_model.onnx
+    - onnx/decoder_model.onnx
+  params:
+    temperature: {default: 0.0, min: 0.0, max: 2.0}
+    top_p: {default: 1.0, min: 0.0, max: 1.0}
+
+- name: whisper-tiny
+  task: asr
+  hf_repo: onnx-community/whisper-tiny
+  description: "Whisper Tiny Multilingual — 39 M params, 100+ languages"
+  languages:
+    - en
+    - zh
+    - de
+    - es
+    - ru
+    - ko
+    - fr
+    - ja
+    - pt
+    - tr
+  download_files:
+    - onnx/encoder_model.onnx
+    - onnx/decoder_model.onnx
+    - tokenizer.json
+    - preprocessor_config.json
+    - config.json
+    - added_tokens.json
+    - special_tokens_map.json
+  onnx_files:
+    - onnx/encoder_model.onnx
+    - onnx/decoder_model.onnx
+  params:
+    temperature: {default: 0.0, min: 0.0, max: 2.0}
+    top_p: {default: 1.0, min: 0.0, max: 1.0}
+
+- name: whisper-base.en
+  task: asr
+  hf_repo: onnx-community/whisper-base.en
+  description: "Whisper Base English — 74 M params, better accuracy"
+  languages:
+    - en
+  download_files:
+    - onnx/encoder_model.onnx
+    - onnx/decoder_model.onnx
+    - tokenizer.json
+    - preprocessor_config.json
+    - config.json
+    - added_tokens.json
+    - special_tokens_map.json
+  onnx_files:
+    - onnx/encoder_model.onnx
+    - onnx/decoder_model.onnx
+  params:
+    temperature: {default: 0.0, min: 0.0, max: 2.0}
+    top_p: {default: 1.0, min: 0.0, max: 1.0}
+
+- name: whisper-base
+  task: asr
+  hf_repo: onnx-community/whisper-base
+  description: "Whisper Base Multilingual — 74 M params, 100+ languages"
+  languages:
+    - en
+    - zh
+    - de
+    - es
+    - ru
+    - ko
+    - fr
+    - ja
+    - pt
+    - tr
+  download_files:
+    - onnx/encoder_model.onnx
+    - onnx/decoder_model.onnx
+    - tokenizer.json
+    - preprocessor_config.json
+    - config.json
+    - added_tokens.json
+    - special_tokens_map.json
+  onnx_files:
+    - onnx/encoder_model.onnx
+    - onnx/decoder_model.onnx
+  params:
+    temperature: {default: 0.0, min: 0.0, max: 2.0}
+    top_p: {default: 1.0, min: 0.0, max: 1.0}
+
+- name: kokoro-82m-v1.0
+  task: tts
+  hf_repo: onnx-community/Kokoro-82M-v1.0-ONNX
+  description: "Kokoro 82M v1.0 — neural TTS, 6 voices, Apache-2.0"
+  sample_rate: 24000
+  voices:
+    - af_heart
+    - af_sarah
+    - af_nicole
+    - am_michael
+    - bf_emma
+    - bm_george
+  voice_map:
+    alloy: af_heart
+    nova: af_nicole
+    fable: af_sarah
+    echo: am_michael
+    onyx: bf_emma
+    shimo: bm_george
+  default_voice: af_heart
+  voice_repo: hexgrad/Kokoro-82M
+  download_files:
+    - onnx/model.onnx
+    - tokenizer.json
+    - config.json
+  onnx_files:
+    - onnx/model.onnx
+  params:
+    temperature: {default: 0.0, min: 0.0, max: 1.0}
+    top_p: {default: 1.0, min: 0.0, max: 1.0}
+  metadata:
+    license: Apache-2.0

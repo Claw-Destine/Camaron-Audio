@@ -94,6 +94,13 @@ class Registry:
             raise ModelNotFound(name)
         return model
 
+    def add_model(self, spec: ModelSpec, providers: list[str] | None = None) -> Model:
+        """Load and register a single model at runtime (e.g. after an HF fetch)."""
+        model = Model(spec, providers=providers)
+        self._models[spec.api_id] = model
+        logger.info("runtime-loaded model %r", spec.api_id)
+        return model
+
     def shutdown(self) -> None:
         self.pool.shutdown(wait=False)
 
