@@ -97,7 +97,7 @@
 <script>
 "use strict";
 const $ = (s) => document.querySelector(s);
-const val = (id) => $(id).value.trim();
+const val = (id) => document.getElementById(id).value.trim();
 
 function audioHeaders() {
   const h = { "Content-Type": "application/json" };
@@ -145,6 +145,13 @@ async function playWav(buffer) {
 // ---- microphone capture (native PCM → WAV, no ffmpeg needed) --------------
 let rec = { ctx: null, stream: null, proc: null, nodes: [], chunks: [], active: false };
 async function startRec(onFrame) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error(
+      "Microphone API is unavailable (navigator.mediaDevices is undefined). " +
+      "Browsers only expose getUserMedia in a secure context — open the page via " +
+      "http://localhost or https://, not a file:// path or a plain http:// remote IP."
+    );
+  }
   rec.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
   const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
   rec.ctx = ctx;
