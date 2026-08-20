@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / build artifacts
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.onnx
+*.onnx_*
+
+# Model weights (never commit)
+models/
+voices/
+!test_app/**
+
+# Hugging Face cache
+.cache/
+hf_cache/
+
+# Node / SvelteKit
+node_modules/
+svelte-kit/
+.nuxt/
+test_app/dist/
+test_app/build/
+test_app/.svelte-kit/
+
+# Env
+.env
+.env.*
+
+# OS
+.DS_Store
+
+.qwen

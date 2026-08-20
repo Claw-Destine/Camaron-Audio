@@ -1,0 +1,23 @@
+# build context: keep it lean (only python sources + packaging are needed)
+.git
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+build
+dist
+.pytest_cache
+.ruff_cache
+htmlcov
+models
+*.onnx
+*.onnx_*
+voices
+tests
+test_app
+scripts
+docs
+.DS_Store
+.env
+.dockerignore

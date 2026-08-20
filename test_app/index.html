@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camaron Audio — test harness</title>
+  <style>
+    :root { --bg:#0f1115; --panel:#171a21; --line:#2a2f3a; --fg:#e6e9ef; --mute:#9aa3b2; --acc:#5b8cff; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+    header { padding:18px 22px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:12px; }
+    header h1 { font-size:18px; margin:0; }
+    header .sub { color:var(--mute); font-size:13px; }
+    main { max-width:820px; margin:0 auto; padding:18px 16px 60px; }
+    .tabs { display:flex; gap:8px; margin-bottom:14px; }
+    .tab { padding:8px 14px; border-radius:10px; background:var(--panel); border:1px solid var(--line); cursor:pointer; user-select:none; }
+    .tab.active { background:var(--acc); color:#fff; border-color:var(--acc); }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:14px; }
+    label { display:block; font-size:12px; color:var(--mute); margin:10px 0 4px; }
+    input,select,textarea { width:100%; padding:9px 11px; border-radius:9px; border:1px solid var(--line); background:#0d0f13; color:var(--fg); font:inherit; }
+    button { padding:10px 16px; border-radius:10px; border:1px solid var(--line); background:#222836; color:var(--fg); cursor:pointer; font:inherit; }
+    button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
+    button.rec { background:#c0392b; border-color:#c0392b; color:#fff; }
+    button[disabled] { opacity:.5; cursor:default; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 18px; }
+    .status { color:var(--mute); font-size:13px; margin-top:8px; min-height:18px; }
+    .error { color:#ff8383; }
+    .transcript { margin-top:12px; padding:12px; background:#0d0f13; border:1px dashed var(--line); border-radius:10px; white-space:pre-wrap; min-height:20px; }
+    #chatbox { height:320px; overflow:auto; display:flex; flex-direction:column; gap:10px; padding:14px; background:#0d0f13; border:1px solid var(--line); border-radius:10px; margin-bottom:12px; }
+    .msg { max-width:80%; padding:9px 13px; border-radius:12px; }
+    .msg.user { align-self:flex-end; background:var(--acc); color:#fff; border-bottom-right-radius:3px; }
+    .msg.assistant { align-self:flex-start; background:#222836; border-bottom-left-radius:3px; }
+    .msg .play { font-size:12px; margin-left:8px; opacity:.8; cursor:pointer; }
+    .hidden { display:none; }
+    .foot { color:var(--mute); font-size:12px; text-align:center; margin-top:24px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Camaron Audio</h1>
+  <span class="sub">in-browser test harness (STT ⇄ TTS)</span>
+</header>
+<main>
+  <div class="tabs">
+    <div class="tab active" data-tab="echo">Echo</div>
+    <div class="tab" data-tab="conversation">Conversation</div>
+  </div>
+
+  <div class="card">
+    <div class="grid2">
+      <div><label>Audio service base URL</label><input id="audioBase" value="http://localhost:8080/v1"></div>
+      <div><label>Audio API key (optional)</label><input id="audioKey" type="password" placeholder="empty for no auth" /></div>
+      <div><label>ASR model</label><input id="asrModel" value="whisper-tiny.en"></div>
+      <div><label>TTS model</label><input id="ttsModel" value="kokoro-82m-v1.0"></div>
+      <div><label>TTS voice</label><input id="ttsVoice" value="af_heart"></div>
+    </div>
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer;color:var(--mute);font-size:13px">LLM settings (Conversation mode — your own OpenAI-compatible LLM)</summary>
+      <div class="grid2" style="margin-top:10px">
+        <div><label>LLM base URL</label><input id="llmBase" value="https://api.openai.com/v1"></div>
+        <div><label>LLM API key</label><input id="llmKey" type="password"></div>
+        <div><label>LLM chat model</label><input id="llmModel" value="gpt-4o-mini"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ECHO TAB -->
+  <section id="tab-echo" class="panel">
+    <div class="card">
+      <div class="row">
+        <button id="recBtn" class="primary">● Record</button>
+        <button id="echoBtn" disabled>Echo (STT → TTS)</button>
+      </div>
+      <div class="transcript" id="echoText">Transcript appears here…</div>
+      <div class="status" id="echoStatus"></div>
+    </div>
+  </section>
+
+  <!-- CONVERSATION TAB -->
+  <section id="tab-conversation" class="panel hidden">
+    <div class="card">
+      <div id="chatbox"></div>
+      <div class="row">
+        <button id="chatRec" class="rec">🎤 Voice</button>
+        <button id="chatRecStop" class="hidden">Stop</button>
+        <textarea id="chatInput" rows="2" placeholder="Type a message, or hold Voice to speak…"></textarea>
+        <button id="chatSend" class="primary">Send</button>
+      </div>
+      <div class="status" id="chatStatus"></div>
+    </div>
+  </section>
+
+  <div class="foot">Audio flows through the Camaron service (STT/TTS). Conversation replies come from your own LLM, then are spoken via the service's TTS.</div>
+</main>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const val = (id) => $(id).value.trim();
+
+function audioHeaders() {
+  const h = { "Content-Type": "application/json" };
+  if (val("audioKey")) h["Authorization"] = "Bearer " + val("audioKey");
+  return h;
+}
+async function apiErr(r) {
+  let msg;
+  try { const j = await r.json(); msg = (j.error && j.error.message) || JSON.stringify(j); }
+  catch { msg = r.statusText; }
+  throw new Error(`HTTP ${r.status}: ${msg}`);
+}
+
+async function transcribe(blob) {
+  const fd = new FormData();
+  fd.append("file", blob, "recording.wav");
+  fd.append("model", val("asrModel") || "whisper-tiny.en");
+  fd.append("response_format", "text");
+  const headers = {};
+  if (val("audioKey")) headers["Authorization"] = "Bearer " + val("audioKey");
+  const r = await fetch(val("audioBase") + "/audio/transcriptions", { method: "POST", headers, body: fd });
+  if (!r.ok) throw await apiErr(r).catch(() => new Error("STT failed"));
+  return (await r.text()).trim();
+}
+async function synthesize(text) {
+  const r = await fetch(val("audioBase") + "/audio/speech", {
+    method: "POST", headers: audioHeaders(),
+    body: JSON.stringify({ model: val("ttsModel") || "kokoro-82m-v1.0",
+      input: text, voice: val("ttsVoice") || "af_heart", response_format: "wav" }),
+  });
+  if (!r.ok) throw await apiErr(r).catch(() => new Error("TTS failed"));
+  return await r.arrayBuffer();
+}
+
+// ---- playback -------------------------------------------------------------
+let _actx = null;
+function audioCtx() { return (_actx = _actx || new (window.AudioContext || window.webkitAudioContext)()); }
+async function playWav(buffer) {
+  const ctx = audioCtx();
+  if (ctx.state === "suspended") await ctx.resume();
+  const audio = await ctx.decodeAudioData(buffer.slice(0));
+  const src = ctx.createBufferSource(); src.buffer = audio; src.connect(ctx.destination); src.start(0);
+}
+
+// ---- microphone capture (native PCM → WAV, no ffmpeg needed) --------------
+let rec = { ctx: null, stream: null, proc: null, nodes: [], chunks: [], active: false };
+async function startRec(onFrame) {
+  rec.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
+  const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+  rec.ctx = ctx;
+  const src = ctx.createMediaStreamSource(rec.stream);
+  const proc = ctx.createScriptProcessor(4096, 1, 1);
+  const sink = ctx.createGain(); sink.gain.value = 0; // mute to avoid feedback while staying connected
+  rec.chunks = []; rec.nodes = [src, proc, sink];
+  proc.onaudioprocess = (e) => {
+    const d = e.inputBuffer.getChannelData(0);
+    const i16 = new Int16Array(d.length);
+    for (let i = 0; i < d.length; i++) i16[i] = Math.max(-1, Math.min(1, d[i])) * 32767;
+    rec.chunks.push(i16);
+    if (onFrame) onFrame(ctx.currentTime);
+  };
+  src.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
+  rec.active = true;
+}
+function stopRec() {
+  if (!rec.active) return null;
+  rec.active = false;
+  rec.proc && rec.nodes.forEach((n) => { try { n.disconnect(); } catch {} });
+  rec.stream && rec.stream.getTracks().forEach((t) => t.stop());
+  let total = 0; rec.chunks.forEach((c) => (total += c.length));
+  const pcm = new Int16Array(total); let o = 0;
+  rec.chunks.forEach((c) => { pcm.set(c, o); o += c.length; });
+  rec.chunks = []; const sr = rec.ctx.sampleRate; rec.ctx && rec.ctx.close();
+  return encodeWav(pcm, sr);
+}
+function encodeWav(pcm, sr) {
+  const bytes = pcm.length * 2;
+  const buf = new ArrayBuffer(44 + bytes); const v = new DataView(buf);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + bytes, true); ws(8, "WAVE"); ws(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, "data"); v.setUint32(40, bytes, true);
+  new Int16Array(buf, 44).set(pcm);
+  return buf;
+}
+
+// ---- tabs -----------------------------------------------------------------
+document.querySelectorAll(".tab").forEach((t) =>
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
+    t.classList.add("active");
+    document.querySelectorAll(".panel").forEach((p) => p.classList.add("hidden"));
+    $("#tab-" + t.dataset.tab).classList.remove("hidden");
+  })
+);
+
+const setStatus = (el, msg, isError) => { el.textContent = msg || ""; el.classList.toggle("error", !!isError); };
+
+// ---- echo tab -------------------------------------------------------------
+let echoBlob = null;
+$("#recBtn").addEventListener("click", async () => {
+  const btn = $("#recBtn");
+  try {
+    if (rec.active) {
+      echoBlob = new Blob([stopRec()], { type: "audio/wav" });
+      btn.textContent = "● Record"; btn.classList.remove("rec");
+      $("#echoBtn").disabled = false;
+      setStatus($("#echoStatus"), `Captured ${(echoBlob.size / 1024).toFixed(0)} KB. Click "Echo".`);
+    } else {
+      btn.textContent = "■ Stop"; btn.classList.add("rec");
+      echoBlob = null; $("#echoBtn").disabled = true;
+      setStatus($("#echoStatus"), "Recording… speak now.");
+      await startRec();
+    }
+  } catch (e) { setStatus($("#echoStatus"), e.message, true); }
+});
+$("#echoBtn").addEventListener("click", async () => {
+  if (!echoBlob) return;
+  const btn = $("#echoBtn"); btn.disabled = true;
+  try {
+    setStatus($("#echoStatus"), "Transcribing…");
+    const text = await transcribe(echoBlob);
+    if (!text) throw new Error("empty transcript");
+    $("#echoText").textContent = text;
+    setStatus($("#echoStatus"), "Synthesizing…");
+    const wav = await synthesize(text);
+    await playWav(wav);
+    setStatus($("#echoStatus"), "Done — TTS played the transcript.");
+  } catch (e) { setStatus($("#echoStatus"), e.message, true); }
+  finally { btn.disabled = false; }
+});
+
+// ---- conversation tab -----------------------------------------------------
+const chatbox = $("#chatbox");
+const history = [];
+function renderMsg(role, content) {
+  const div = document.createElement("div"); div.className = "msg " + role;
+  div.textContent = content; (div.className.includes("user") ? 0 : 0);
+  chatbox.appendChild(div); chatbox.scrollTop = chatbox.scrollHeight;
+  return div;
+}
+function assistantMsg(content) {
+  const div = renderMsg("assistant", content);
+  const p = document.createElement("span"); p.className = "play"; p.textContent = "🔊 play";
+  p.onclick = async () => { try { setStatus($("#chatStatus"), "Speaking…"); await playWav(await synthesize(content)); setStatus($("#chatStatus"), ""); } catch (e) { setStatus($("#chatStatus"), e.message, true); } };
+  div.appendChild(p);
+  return div;
+}
+async function llmReply(messages) {
+  const r = await fetch(val("llmBase") + "/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + (val("llmKey") || "") },
+    body: JSON.stringify({ model: val("llmModel") || "gpt-4o-mini", messages, max_tokens: 300 }),
+  });
+  if (!r.ok) { let m; try { m = (await r.json()).error && (await r.json()).error.message; } catch { m = r.statusText; } throw new Error("LLM HTTP " + r.status + (m ? ": " + m : "")); }
+  const j = await r.json();
+  return j.choices[0].message.content;
+}
+let pendingVoice = null;
+$("#chatRec").addEventListener("click", async () => {
+  try {
+    await startRec();
+    $("#chatRec").classList.add("hidden"); $("#chatRecStop").classList.remove("hidden");
+    setStatus($("#chatStatus"), "Recording… speak now.");
+  } catch (e) { setStatus($("#chatStatus"), e.message, true); }
+});
+$("#chatRecStop").addEventListener("click", () => {
+  pendingVoice = new Blob([stopRec()], { type: "audio/wav" });
+  $("#chatRec").classList.remove("hidden"); $("#chatRecStop").classList.add("hidden");
+  setStatus($("#chatStatus"), "Transcribed on send.");
+});
+async function sendChat() {
+  const input = $("#chatInput");
+  let userText = input.value.trim();
+  const sendBtn = $("#chatSend"); sendBtn.disabled = true;
+  try {
+    if (!userText && pendingVoice) {
+      setStatus($("#chatStatus"), "Transcribing voice…");
+      userText = await transcribe(pendingVoice); pendingVoice = null;
+    }
+    if (!userText) throw new Error("nothing to send");
+    renderMsg("user", userText); input.value = "";
+    history.push({ role: "user", content: userText });
+    setStatus($("#chatStatus"), "Thinking…");
+    const reply = await llmReply([...history, { role: "system", content: "Keep replies to 1-2 spoken-friend sentences." }]);
+    history.push({ role: "assistant", content: reply });
+    assistantMsg(reply);
+    setStatus($("#chatStatus"), "Speaking…");
+    await playWav(await synthesize(reply));
+    setStatus($("#chatStatus"), "");
+  } catch (e) { setStatus($("#chatStatus"), e.message, true); }
+  finally { sendBtn.disabled = false; }
+}
+$("#chatSend").addEventListener("click", sendChat);
+$("#chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+</script>
+</body>
+</html>

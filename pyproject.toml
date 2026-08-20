@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "camaron-audio"
+version = "0.1.0"
+description = "OpenAI-compatible audio (STT/TTS) service backed by ONNX Runtime"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Camaron Audio" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "numpy>=1.26",
+    "onnxruntime>=1.19",
+    "huggingface_hub>=0.24",
+    "PyYAML>=6.0",
+    "python-multipart>=0.0.9",
+    # Pure-Python, no torch: used for Whisper's log-mel feature extraction and the
+    # BPE tokenizer. (ONNX Runtime runs the model weights; transformers is helpers only.)
+    "transformers>=4.45",
+]
+
+[project.optional-dependencies]
+# TTS phonemization (English) + tokenizer. Kept optional so an ASR-only
+# deployment does not pull spaCy / a bundled language model.
+tts = [
+    "misaki>=0.9",
+    "num2words>=0.5",
+    "spacy>=3.7",
+    # en_core_web_sm is distributed as a wheel, not a plain sdist:
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
+]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",   # starlette TestClient transport
+    "openai>=1.30",
+    "ruff>=0.5",
+]
+# GPU variants are installed in the Dockerfile (they replace onnxruntime).
+cuda = ["onnxruntime-gpu>=1.19"]
+rocm = ["onnxruntime-rocm>=1.19"]
+
+[project.scripts]
+camaron-audio = "src.__main__:main"
+
+[tool.setuptools]
+packages = ["src", "src.inference", "src.api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "e2e: end-to-end tests against a running server (slower, downloads models)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
