@@ -27,6 +27,7 @@ def test_tts_voice_fields():
             "task": "tts",
             "voices": ["v1", "v2"],
             "voice_map": {"alloy": "v1", "nova": "v2"},
+            "voice_language": {"v2": "es"},
             "default_voice": "v1",
             "params": {"temperature": {"default": 0.5, "min": 0.0, "max": 1.0}},
         },
@@ -34,8 +35,15 @@ def test_tts_voice_fields():
     )
     assert m.voices == ["v1", "v2"]
     assert m.voice_map == {"alloy": "v1", "nova": "v2"}
+    assert m.voice_language == {"v2": "es"}
     assert m.default_voice == "v1"
     assert isinstance(m.params["temperature"], ParamBounds)
+
+
+def test_voice_language_defaults_empty_and_lowercased():
+    m = Manifest.parse({"task": "tts", "voice_language": {"ef_dora": "ES"}}, folder_name="x")
+    assert m.voice_language == {"ef_dora": "es"}
+    assert Manifest.parse({"task": "tts"}, folder_name="x").voice_language == {}
 
 
 def test_hf_url_repo_reductions():

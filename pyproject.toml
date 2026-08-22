@@ -24,14 +24,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# TTS phonemization (English) + tokenizer. Kept optional so an ASR-only
-# deployment does not pull spaCy / a bundled language model.
+# TTS phonemization. Kept optional so an ASR-only deployment does not pull
+# spaCy / a bundled language model. `misaki[en]` (English spaCy G2P + its
+# espeak-fallback backend) and `misaki[zh]` (Chinese) carry the per-language
+# deps that misaki itself maintains.
 tts = [
-    "misaki>=0.9",
-    "num2words>=0.5",
-    "spacy>=3.7",
+    "misaki[en]>=0.9",
+    "misaki[zh]>=0.9",
     # en_core_web_sm is distributed as a wheel, not a plain sdist:
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
+]
+# Japanese phonemizer: heavier native deps (pyopenjtalk) -- install only if
+# ja voices are needed.
+tts-ja = [
+    "misaki[ja]>=0.9",
 ]
 dev = [
     "pytest>=8.0",
@@ -50,6 +56,10 @@ camaron-audio = "src.__main__:main"
 packages = ["src", "src.inference", "src.api"]
 
 [tool.pytest.ini_options]
+# Prepend the project root so the `src` package (a top-level package in this
+# project) resolves even when a stray `src/` directory lingers in site-packages
+# (namespace packages shadow by name, so we must win by path order).
+pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-q"
 markers = [

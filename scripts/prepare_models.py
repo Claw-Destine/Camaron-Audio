@@ -1,8 +1,10 @@
-"""Prepare the local ``models/`` directory for the two test models.
+"""Prepare the local ``models/`` directory for the test models.
 
 Downloads from Hugging Face (cached) and writes, under ``models/``:
-  whisper-tiny.en/   -- Whisper ONNX (encoder + decoder, tokenizer, mel config)
-  kokoro-82m-v1.0/   -- Kokoro ONNX (model + phoneme tokenizer + voice style tables)
+  whisper-tiny.en/   -- Whisper ONNX, English-only (encoder + decoder, tokenizer, mel config)
+  whisper-tiny/      -- Whisper ONNX, multilingual (100+ languages)
+  kokoro-82m-v1.0/   -- Kokoro ONNX (model + phoneme tokenizer + voice style tables,
+                        en/es/fr/hi/it/ja/pt/zh voices)
 
 Voice style tables are converted from the upstream ``.pt`` (torch) into ``.npy``
 so the *running* service never needs torch -- it loads them with plain numpy.
@@ -22,7 +24,8 @@ from huggingface_hub import hf_hub_download
 ROOT = Path(__file__).resolve().parent.parent
 MODELS = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "models"
 
-WHISPER_REPO = "onnx-community/whisper-tiny.en"
+WHISPER_EN_REPO = "onnx-community/whisper-tiny.en"
+WHISPER_ML_REPO = "onnx-community/whisper-tiny"
 KOKORO_REPO = "onnx-community/Kokoro-82M-v1.0-ONNX"
 VOICE_REPO = "hexgrad/Kokoro-82M"
 
@@ -37,15 +40,45 @@ WHISPER_FILES = [
 ]
 KOKORO_FILES = ["onnx/model.onnx", "tokenizer.json", "config.json"]
 
-KOKORO_VOICE_IDS = ["af_heart", "af_sarah", "af_nicole", "am_michael", "bf_emma", "bm_george"]
+KOKORO_VOICE_IDS = [
+    "af_heart", "af_sarah", "af_nicole", "am_michael", "bf_emma", "bm_george",  # en
+    "ef_dora",      # es
+    "ff_siwis",     # fr
+    "hf_alpha",     # hi
+    "if_sara",      # it
+    "pf_dora",      # pt
+    "zf_xiaobei",   # zh
+    "jf_alpha",     # ja (requires the 'tts-ja' extra at runtime)
+]
 
-WHISPER_MANIFEST = {
+# voice id -> phonemizer language; en voices rely on the default
+KOKORO_VOICE_LANGUAGE = {
+    "ef_dora": "es", "ff_siwis": "fr", "hf_alpha": "hi", "if_sara": "it",
+    "pf_dora": "pt", "zf_xiaobei": "zh", "jf_alpha": "ja",
+}
+
+WHISPER_ML_LANGS = ["en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr"]
+
+WHISPER_EN_MANIFEST = {
     "name": "whisper-tiny.en",
     "task": "asr",
     "languages": ["en"],
     "onnx": "onnx/decoder_model.onnx",
     "onnx_files": ["onnx/encoder_model.onnx", "onnx/decoder_model.onnx"],
-    "hf_url": f"https://huggingface.co/{WHISPER_REPO}",
+    "hf_url": f"https://huggingface.co/{WHISPER_EN_REPO}",
+    "params": {
+        "temperature": {"default": 0.0, "min": 0.0, "max": 2.0},
+        "top_p": {"default": 1.0, "min": 0.0, "max": 1.0},
+    },
+}
+
+WHISPER_ML_MANIFEST = {
+    "name": "whisper-tiny",
+    "task": "asr",
+    "languages": WHISPER_ML_LANGS,
+    "onnx": "onnx/decoder_model.onnx",
+    "onnx_files": ["onnx/encoder_model.onnx", "onnx/decoder_model.onnx"],
+    "hf_url": f"https://huggingface.co/{WHISPER_ML_REPO}",
     "params": {
         "temperature": {"default": 0.0, "min": 0.0, "max": 2.0},
         "top_p": {"default": 1.0, "min": 0.0, "max": 1.0},
@@ -65,6 +98,7 @@ KOKORO_MANIFEST = {
         "onyx": "bf_emma",
         "shimo": "bm_george",
     },
+    "voice_language": KOKORO_VOICE_LANGUAGE,
     "default_voice": "af_heart",
     "hf_url": f"https://huggingface.co/{KOKORO_REPO}",
     "params": {
@@ -107,8 +141,12 @@ def _convert_voices(dest_voices: Path, voices: list[str]) -> None:
 def main() -> None:
     print(f"Preparing models under {MODELS}")
     whisper_dir = MODELS / "whisper-tiny.en"
-    _repo_files(WHISPER_REPO, whisper_dir, WHISPER_FILES)
-    _write_manifest(whisper_dir, WHISPER_MANIFEST)
+    _repo_files(WHISPER_EN_REPO, whisper_dir, WHISPER_FILES)
+    _write_manifest(whisper_dir, WHISPER_EN_MANIFEST)
+
+    ml_dir = MODELS / "whisper-tiny"
+    _repo_files(WHISPER_ML_REPO, ml_dir, WHISPER_FILES)
+    _write_manifest(ml_dir, WHISPER_ML_MANIFEST)
 
     kokoro_dir = MODELS / "kokoro-82m-v1.0"
     _repo_files(KOKORO_REPO, kokoro_dir, KOKORO_FILES)

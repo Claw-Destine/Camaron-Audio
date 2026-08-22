@@ -3,7 +3,7 @@ import io
 import wave
 
 import pytest
-from conftest import requires_models
+from conftest import requires_es_voice, requires_models, requires_zh_voice
 
 pytestmark = [pytest.mark.e2e, requires_models]
 
@@ -54,3 +54,25 @@ def test_speech_missing_input_400(http):
 def test_speech_asr_model_rejected(http):
     r = http.post("/v1/audio/speech", json={"model": "whisper-tiny.en", "input": "hi"})
     assert r.status_code == 400
+
+
+# --- multilingual voices (the voice decides the phonemizer language) ---------
+@requires_es_voice
+def test_speech_spanish(http):
+    r = http.post("/v1/audio/speech",
+                  json={"model": "kokoro-82m-v1.0",
+                        "input": "Hola mundo, esta es una prueba de voz.",
+                        "voice": "ef_dora", "response_format": "wav"})
+    assert r.status_code == 200
+    with wave.open(io.BytesIO(r.content)) as w:
+        assert w.getnframes() > 0.5 * 24000
+
+
+@requires_zh_voice
+def test_speech_chinese(http):
+    r = http.post("/v1/audio/speech",
+                  json={"model": "kokoro-82m-v1.0", "input": "你好，世界。",
+                        "voice": "zf_xiaobei", "response_format": "wav"})
+    assert r.status_code == 200
+    with wave.open(io.BytesIO(r.content)) as w:
+        assert w.getnframes() > 0.5 * 24000

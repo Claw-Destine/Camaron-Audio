@@ -29,6 +29,41 @@ inference requests through a well-documented, drop-in-compatible HTTP interface.
 ## Future Goals
 - Support API-compatible modes for other providers (e.g. ElevenLabs) behind the same engine
 
+## Language support (multilingual ASR / TTS)
+
+ASR — decoding is conditioned on the requested (or detected) language:
+- Multilingual models decode with prefix `[SOS, <|lang|>, <|task|>, <|notimestamps|>]`
+  (HF's exact forced-token layout); English-only models use `[SOS, <|notimestamps|>]`,
+  chosen by the manifest declaring exactly one language. Language token ids are not in
+  our tokenizer assets (the ONNX snapshots omit the `<|lang|>` tokens from
+  `added_tokens.json`), so they are derived from SOS: `SOS + 1 + index` in Whisper's
+  canonical language order — the layout is stable across sizes and the .en variant.
+- `language` omitted → one greedy decode step from `[SOS]` recovers the model's
+  language-of-choice (top-1 is the language token); the *detected* language is what
+  `verbose_json` reports. A model with a single declared language reports that
+  language even when auto-detection does not run.
+- `language` given → validated against the manifest `languages`; unsupported →
+  `400 "Invalid language"`.
+- `/v1/audio/translations` forces `language=en` + `task=translate`.
+- E2E coverage: `tests/test_transcriptions.py` (detection, forced language, invalid
+  language, per-language TTS→STT closed loop).
+
+TTS — language follows the voice (OpenAI's `/v1/audio/speech` has no `language` field).
+Kokoro 82M v1.0 ONNX is one multilingual graph; only the phonemizer and the voice
+tables differ per language.
+- Manifest field `voice_language: {voice_id: lang}` (raw voice id → language; "en"
+  voices rely on the default).
+- `KokoroTTS` builds phonemizers lazily per language: `misaki.en.G2P` for English,
+  `misaki.espeak.EspeakG2P(<espeak code>)` for es/fr/hi/it/pt (codes: es, fr-fr, hi,
+  it, pt-br), `misaki.zh.ZHG2P` for Chinese. Japanese (`misaki.ja.JAG2P`) needs the
+  native `tts-ja` extra and fails with a clear install hint when absent.
+- Deps: the `tts` extra is `misaki[en]` + `misaki[zh]` + the spaCy English model;
+  `tts-ja` for Japanese.
+- Non-English voice tables (ef_dora, ff_siwis, hf_alpha, if_sara, pf_dora, zf_xiaobei,
+  jf_alpha) download + convert through the existing registry/`prepare_models.py`
+  pipeline.
+- E2E coverage: `tests/test_speech.py` (es + zh voices) plus the TTS→STT loop above.
+
 ## Quality Rules
 
 - Keep the implementation small, sharp, easy to understand. Try to write elegant code in a state of grace. Don't settle for the first thing that comes to mind — find the most minimal, better-working design.

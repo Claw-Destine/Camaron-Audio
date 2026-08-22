@@ -52,7 +52,8 @@ class TestInstalledModels:
         assert r.status_code == 200
         models = r.json()
         assert all(m["task"] == "asr" for m in models)
-        assert {m["name"] for m in models} == {"whisper-tiny.en"}
+        # the EN-only model must be present; multilingual variants may be prepared too
+        assert {m["name"] for m in models} >= {"whisper-tiny.en"}
 
     def test_filter_tts(self, http):
         r = http.get("/manage/models", params={"type": "tts"})
@@ -71,10 +72,9 @@ class TestInstalledModels:
 
     def test_asr_manifest_structure(self, http):
         r = http.get("/manage/models", params={"type": "asr"})
-        model = r.json()[0]
-        assert model["name"] == "whisper-tiny.en"
+        model = next(m for m in r.json() if m["name"] == "whisper-tiny.en")
         assert model["task"] == "asr"
-        assert "en" in model.get("languages", [])
+        assert model.get("languages") == ["en"]
 
 
 class TestFetch:

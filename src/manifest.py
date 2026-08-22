@@ -65,6 +65,7 @@ class Manifest:
     languages: list[str] = field(default_factory=list)
     voices: list[str] = field(default_factory=list)
     voice_map: dict[str, str] = field(default_factory=dict)
+    voice_language: dict[str, str] = field(default_factory=dict)  # voice id -> phonemizer language
     default_voice: str | None = None
     sample_rate: int | None = None   # audio output sample rate (TTS) or input (ASR)
     params: dict[str, ParamBounds] = field(default_factory=dict)
@@ -113,6 +114,9 @@ class Manifest:
             languages=list(data.get("languages") or []),
             voices=list(data.get("voices") or []),
             voice_map={str(k): str(v) for k, v in (data.get("voice_map") or {}).items()},
+            voice_language={
+                str(k): str(v).lower() for k, v in (data.get("voice_language") or {}).items()
+            },
             default_voice=data.get("default_voice"),
             sample_rate=int(data["sample_rate"]) if data.get("sample_rate") else None,
             params=pmap,

@@ -91,6 +91,8 @@ def _serialize_manifest(m: Manifest) -> dict[str, Any]:
         }
     if m.voice_map:
         out["voice_map"] = m.voice_map
+    if m.voice_language:
+        out["voice_language"] = m.voice_language
     if m.metadata:
         out["metadata"] = m.metadata
     return out

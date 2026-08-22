@@ -10,6 +10,18 @@ Why this shape:
 - The log-mel spectrogram is produced by the reference ``WhisperFeatureExtractor``
   (from ``preprocessor_config.json``) so the mel matches the model exactly --
   hand-rolling it would be fragile. Only the model weights run in ONNX Runtime.
+
+Language conditioning (Whisper convention):
+- Multilingual models condition decoding on ``[SOS, <|lang|>, <|task|>, <|notimestamps|>]``;
+  English-only models use ``[SOS, <|notimestamps|>]``. The layout is identical across
+  all Whisper sizes (the .en family has SOS shifted by exactly one id), so the language
+  token ids are derived from SOS: ``SOS + 1 + index`` in the canonical language order.
+  This matters because our tokenizer assets (HF ONNX snapshot ``added_tokens.json``)
+  list the task/notimestamps tokens but *omit* the ``<|lang|>`` tokens, and the slow
+  ``WhisperTokenizer`` maps unknown names to the unk id rather than failing.
+- Language detection: when no language is requested, one extra decoder step from
+  ``[SOS]`` recovers the model's chosen language (top-1 of the first positions is a
+  language token in multilingual decoding) -- the same scheme HF's pipeline uses.
 """
 from __future__ import annotations
 
@@ -27,11 +39,21 @@ logger = logging.getLogger("camaron.asr")
 _MAX_NEW_TOKENS = 2048
 _WHISPER_SR = 16000
 
+# Whisper's canonical language order; the language tokens occupy ids SOS+1 ... in
+# this order across every Whisper variant (openai/whisper-tiny: en=50259, zh=50260, ...).
+_CANONICAL_LANGS = (
+    "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr",
+    "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi",
+    "he", "uk", "el", "ms", "cs", "fa", "lv", "hu", "ro", "da",
+    "et", "lt", "ur", "hr", "bg", "th", "gl", "sr", "hy",
+)
+
 
 class WhisperASR:
     def __init__(
         self,
         root: Path,
+        multilingual: bool = False,
         providers: list[str] | None = None,
         inter_op: int | None = None,
         intra_op: int | None = None,
@@ -46,6 +68,15 @@ class WhisperASR:
         self.feature_extractor = WhisperFeatureExtractor.from_pretrained(str(pre))
         self.sos = int(self.tokenizer.convert_tokens_to_ids("<|startoftranscript|>"))
         self.eos = _safe_eos(self.tokenizer)
+        self.notimestamps = int(self.tokenizer.convert_tokens_to_ids("<|notimestamps|>"))
+        self.multilingual = multilingual
+        if multilingual:
+            self._lang_ids = {c: self.sos + 1 + i for i, c in enumerate(_CANONICAL_LANGS)}
+            self._id_to_lang = {i: c for c, i in self._lang_ids.items()}
+            self._task_ids = {
+                t: int(self.tokenizer.convert_tokens_to_ids(f"<|{t}|>"))
+                for t in ("transcribe", "translate")
+            }
 
         options = ort.SessionOptions()
         options.log_severity_level = 3  # ORT warnings/errors only
@@ -75,7 +106,9 @@ class WhisperASR:
         max_new_tokens: int = _MAX_NEW_TOKENS,
         temperature: float = 0.0,
         top_p: float = 1.0,
-    ) -> str:
+        language: str | None = None,
+        task: str = "transcribe",
+    ) -> tuple[str, str | None]:
         audio = _linear_resample(audio.astype(np.float32), sample_rate, _WHISPER_SR)
         features = (
             self.feature_extractor(audio, sampling_rate=_WHISPER_SR, return_tensors="np")[
@@ -85,7 +118,10 @@ class WhisperASR:
         )
         encoder_hidden = self.encoder.run(["last_hidden_state"], {"input_features": features})[0]
 
-        prefix = [self.sos]
+        if self.multilingual and language is None:
+            language = self._detect_language(encoder_hidden)
+        prefix = self._initial_tokens(language, task)
+        n_cond = len(prefix)  # conditioning tokens to strip before decoding the text
         for _ in range(max_new_tokens):
             logits = self.decoder.run(
                 ["logits"],
@@ -99,8 +135,29 @@ class WhisperASR:
                 break
             prefix.append(int(token))
 
-        # Drop the leading SOS and decode; ``skip_special_tokens`` hides <|endofprompt|> etc.
-        return self.tokenizer.decode(prefix[1:], skip_special_tokens=True)
+        # Drop the conditioning prefix and decode; ``skip_special_tokens`` hides
+        # <|endofprompt|> and stray timestamp tokens.
+        text = self.tokenizer.decode(prefix[n_cond:], skip_special_tokens=True)
+        return text, language
+
+    def _initial_tokens(self, language: str | None, task: str) -> list[int]:
+        prefix = [self.sos]
+        if self.multilingual:
+            if language is not None:
+                prefix.append(self._lang_ids[language])
+            prefix.append(self._task_ids[task])
+        prefix.append(self.notimestamps)
+        return prefix
+
+    def _detect_language(self, encoder_hidden: np.ndarray) -> str | None:
+        """One greedy decode step from SOS: the top-1 of a multilingual model here is
+        its language-of-choice token."""
+        logits = self.decoder.run(
+            ["logits"],
+            {"input_ids": np.array([[self.sos]], dtype=np.int64),
+             "encoder_hidden_states": encoder_hidden},
+        )[0]
+        return self._id_to_lang.get(int(np.argmax(logits[0, -1])))
 
 
 def _safe_eos(tokenizer: WhisperTokenizer) -> int:
