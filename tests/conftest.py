@@ -18,15 +18,32 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 MODELS = os.environ.get("CAMARON_MODEL_PATH", str(ROOT / "models"))
 
 
+def _model_ready(*parts: str) -> bool:
+    return pathlib.Path(MODELS, *parts).exists()
+
+
 def _models_ready() -> bool:
     return (
-        pathlib.Path(MODELS, "whisper-tiny.en", "manifest.yaml").exists()
-        and pathlib.Path(MODELS, "kokoro-82m-v1.0", "manifest.yaml").exists()
+        _model_ready("whisper-tiny.en", "manifest.yaml")
+        and _model_ready("kokoro-82m-v1.0", "manifest.yaml")
     )
 
 
 requires_models = pytest.mark.skipif(not _models_ready(),
                                      reason="run `python scripts/prepare_models.py` first")
+
+# Optional assets: multilingual whisper / non-English voice tables (all prepared by
+# scripts/prepare_models.py). Tests stay green on a minimal install by skipping only
+# when a specific asset is missing.
+requires_ml_whisper = pytest.mark.skipif(
+    not _model_ready("whisper-tiny", "manifest.yaml"),
+    reason="multilingual whisper-tiny not prepared (run `python scripts/prepare_models.py`)")
+requires_es_voice = pytest.mark.skipif(
+    not _model_ready("kokoro-82m-v1.0", "voices", "ef_dora.npy"),
+    reason="es voice table not prepared (run `python scripts/prepare_models.py`)")
+requires_zh_voice = pytest.mark.skipif(
+    not _model_ready("kokoro-82m-v1.0", "voices", "zf_xiaobei.npy"),
+    reason="zh voice table not prepared (run `python scripts/prepare_models.py`)")
 
 
 @pytest.fixture(scope="session")

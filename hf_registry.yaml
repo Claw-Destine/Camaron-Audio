@@ -127,7 +127,7 @@
 - name: kokoro-82m-v1.0
   task: tts
   hf_repo: onnx-community/Kokoro-82M-v1.0-ONNX
-  description: "Kokoro 82M v1.0 — neural TTS, 6 voices, Apache-2.0"
+  description: "Kokoro 82M v1.0 — multilingual TTS (en/es/fr/hi/it/ja/pt/zh), one voice per language shown"
   sample_rate: 24000
   voices:
     - af_heart
@@ -136,6 +136,13 @@
     - am_michael
     - bf_emma
     - bm_george
+    - ef_dora
+    - ff_siwis
+    - hf_alpha
+    - if_sara
+    - pf_dora
+    - zf_xiaobei
+    - jf_alpha
   voice_map:
     alloy: af_heart
     nova: af_nicole
@@ -143,6 +150,15 @@
     echo: am_michael
     onyx: bf_emma
     shimo: bm_george
+  # voice id -> phonemizer language; "en" voices fall back to the default
+  voice_language:
+    ef_dora: es
+    ff_siwis: fr
+    hf_alpha: hi
+    if_sara: it
+    pf_dora: pt
+    zf_xiaobei: zh
+    jf_alpha: ja
   default_voice: af_heart
   voice_repo: hexgrad/Kokoro-82M
   download_files:

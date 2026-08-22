@@ -38,7 +38,9 @@ class Model:
         self.manifest = spec.manifest
         root, voice_dirs = self._resolve_assets(spec)
         if spec.manifest.task == Task.ASR:
-            self.handler = WhisperASR(root, providers=providers)
+            # Manifest declaring more than one language = multilingual Whisper family.
+            self.handler = WhisperASR(root, multilingual=len(spec.manifest.languages) > 1,
+                                      providers=providers)
         else:
             self.handler = KokoroTTS(root, self.manifest, voice_dirs, providers=providers)
 
@@ -60,8 +62,11 @@ class Model:
         return sr or self.manifest.sample_rate or 16000
 
     def transcribe(self, audio, sample_rate: int, max_new_tokens: int = 2048,
-                   temperature: float = 0.0, top_p: float = 1.0) -> str:
-        return self.handler.transcribe(audio, sample_rate, max_new_tokens, temperature, top_p)
+                   temperature: float = 0.0, top_p: float = 1.0,
+                   language: str | None = None, task: str = "transcribe") -> tuple[str, str | None]:
+        return self.handler.transcribe(
+            audio, sample_rate, max_new_tokens, temperature, top_p, language, task
+        )
 
     def synthesize(self, text: str, voice: str | None = None, speed: float = 1.0):
         return self.handler.synthesize(text, voice, speed)

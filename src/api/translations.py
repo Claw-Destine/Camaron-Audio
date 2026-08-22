@@ -1,7 +1,8 @@
 """POST /v1/audio/translations — speech to *English* text.
 
-Identical to transcriptions with ``language`` forced server-side to "en". Kept as a
-separate route so the OpenAI paths behave exactly as expected.
+Identical to transcriptions with ``language`` forced to "en" and the Whisper task set
+to "translate" server-side. Kept as a separate route so the OpenAI paths behave
+exactly as expected.
 """
 from fastapi import APIRouter, File, Form, Request, UploadFile
 
@@ -21,5 +22,5 @@ async def translations(
 ):
     return await transcriptions.handle_transcription(
         request, model, file, language="en", response_format=response_format,
-        temperature=temperature, top_p=top_p,
+        temperature=temperature, top_p=top_p, task="translate",
     )
